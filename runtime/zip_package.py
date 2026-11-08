@@ -15,6 +15,7 @@ NAME = 'figma-kanpu-totonoe'
 MAX_BYTES = 10 * 1024 * 1024
 REQUIRED = {'SKILL.md', 'scripts/update_client.py', 'scripts/verify_layout_rules.py'}
 REQUIREMENTS = ['figma-mcp', 'image-generation']
+WINDOWS_DIRECTORY_RENAME = os.name == 'nt'
 
 
 def read_package(path, approved_bootstrap=None):
@@ -127,7 +128,15 @@ def install_zip(path, destination, accept_source, client, initial_config=None, i
         client.write_json(state_dir / 'state.json', {'version': release['version'], 'commit': initial_commit or 'zip:' + digest, 'installed_hashes': release['files']})
         if root.is_symlink() or root.stat().st_ino != reserved_inode or any(root.iterdir()):
             raise ValueError('destination_changed_concurrently')
-        os.replace(stage, root)
+        if WINDOWS_DIRECTORY_RENAME:
+            # Win32 cannot replace an existing directory, even an empty one.
+            # Remove only our verified empty reservation, then use the native
+            # no-overwrite rename. A concurrently created destination survives.
+            root.rmdir()
+            reserved_inode = None
+            os.rename(stage, root)
+        else:
+            os.replace(stage, root)
         return {'status': 'installed', 'version': release['version'], 'source_kind': 'local_zip',
                 'automatic_check': 'approved_local_zip_on_skill_start', 'network': False}
     except (OSError, ValueError, TypeError, KeyError, SyntaxError, zipfile.BadZipFile, UnicodeError):
@@ -152,7 +161,7 @@ def restore(root, state_dir, client):
         return {'status': 'restore_not_applied', 'reason': 'busy_or_not_configured'}
     previous = None; failed = None
     try:
-        config = json.loads((state_dir / 'config.json').read_text()); state = json.loads((state_dir / 'state.json').read_text())
+        config = json.loads((state_dir / 'config.json').read_text(encoding='utf-8')); state = json.loads((state_dir / 'state.json').read_text(encoding='utf-8'))
         if not isinstance(config, dict) or not isinstance(state, dict) or (state_dir / 'pending.json').exists():
             raise ValueError('restore_needs_review')
         if client.hashes(root) != state['installed_hashes']:

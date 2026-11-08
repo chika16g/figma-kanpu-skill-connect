@@ -134,7 +134,7 @@ def recover(root, state_dir, state):
     journal = state_dir / 'pending.json'
     if not journal.exists():
         return state
-    pending = json.loads(journal.read_text())
+    pending = json.loads(journal.read_text(encoding='utf-8'))
     if not isinstance(pending, dict) or not isinstance(pending.get('new_state'), dict) or not isinstance(pending['new_state'].get('installed_hashes'), dict):
         raise ValueError('invalid_recovery_record')
     backup = Path(pending['backup'])
@@ -211,14 +211,14 @@ def update(root, state_dir, test_fixture=False):
     except FileExistsError:
         result = {'status': 'busy', 'retained_installed_version': has_skill(root)}
         try:
-            saved = json.loads((state_dir / 'config.json').read_text())
+            saved = json.loads((state_dir / 'config.json').read_text(encoding='utf-8'))
             if saved.get('source_kind') == 'authenticated_api' and saved.get('access_blocked') is True:
                 result['may_use_installed'] = False
         except (OSError, ValueError, TypeError, AttributeError):
             result['may_use_installed'] = False
         return result
     try:
-        config = json.loads((state_dir / 'config.json').read_text())
+        config = json.loads((state_dir / 'config.json').read_text(encoding='utf-8'))
         if not isinstance(config, dict):
             raise ValueError('invalid_config')
         if config.get('trusted_at_install') is not True:
@@ -228,7 +228,7 @@ def update(root, state_dir, test_fixture=False):
         if config.get('source_kind') == 'authenticated_api':
             return api_transport().update(root, state_dir, config, api_client_facade())
         if config.get('source_kind') == 'local_zip':
-            state = recover(root, state_dir, json.loads((state_dir / 'state.json').read_text()))
+            state = recover(root, state_dir, json.loads((state_dir / 'state.json').read_text(encoding='utf-8')))
             if not isinstance(state, dict) or not isinstance(state.get('installed_hashes'), dict):
                 raise ValueError('invalid_state')
             if hashes(root) != state['installed_hashes']:
@@ -247,7 +247,7 @@ def update(root, state_dir, test_fixture=False):
         check_source(config['source'], test_fixture)
         if config.get('branch') != 'stable':
             raise ValueError('only_tested_stable_channel_allowed')
-        state = recover(root, state_dir, json.loads((state_dir / 'state.json').read_text()))
+        state = recover(root, state_dir, json.loads((state_dir / 'state.json').read_text(encoding='utf-8')))
         if hashes(root) != state['installed_hashes']:
             return {'status': 'local_changes', 'retained_installed_version': has_skill(root)}
         cache = state_dir / 'git-cache'

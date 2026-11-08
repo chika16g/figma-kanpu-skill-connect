@@ -150,7 +150,7 @@ def obtain(config, client, provider=None, opener=None):
 
 
 def update(root, state_dir, config, client, provider=None, opener=None):
-    state = client.recover(root, state_dir, json.loads((state_dir / 'state.json').read_text()))
+    state = client.recover(root, state_dir, json.loads((state_dir / 'state.json').read_text(encoding='utf-8')))
     if client.hashes(root) != state['installed_hashes']:
         return {'status': 'local_changes', 'retained_installed_version': client.has_skill(root), 'may_use_installed': config.get('access_blocked') is not True}
     try:
