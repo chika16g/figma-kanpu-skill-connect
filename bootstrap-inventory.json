@@ -1,10 +1,13 @@
 {
-  "connect.py": "c1070fbaccb0437eae3bc91d969c29fa7c4ed04f5df7d23abbbf5528151c0aed",
-  "README.md": "a7c875ce5f8f0bcb88495354665257c205d929ae5f8fda60ab3ab904aeb42ea6",
-  "SETUP_WITH_AI.md": "5ff105e37c7be220fc65fc513f88799db2ad43e678cf108450338835a4d97193",
+  "browser_input.py": "bcb71f0abb697906d5cb1efd3764a695c87ae7b48be502ee83fa56e7e78b1870",
+  "windows_native_smoke.py": "4b53aee807acdaa8a399896d70250fed15eae134c8600cb3e3fe072f6696bc7f",
+  "connect.py": "9344df1e336493bfd8bce8557054e8d85d7551f32d886da8781c3d0afd43086a",
+  "README.md": "79d84c6a2d1bd54abec084c48ad55823a52e4acf4eab79970cef915b11a07b05",
+  "SETUP_WITH_AI.md": "bc950d8151609c544e5183ef76bbef493a7ee840206a0a5dedae4bc20e276aeb",
   "runtime/pair_client.py": "44ee05ad37edb7886adfffa8294660b8e5b9bd1d20430895152b1030da3896e7",
-  "runtime/credential_store.py": "33e4caccca120c20d8abb024fd4a2b24dbeaf640c3697d7ccb12517ab0048886",
-  "runtime/authenticated_delivery.py": "5a460f2183cfb5baa1ba96fac5f6652ecd496480f4125a2a97562bf4172c6d4c",
-  "runtime/update_client.py": "9e148145eb6446784b9d5f22893f0e6b508bd0bd0a24f96792ae59509ba3613c",
-  "runtime/zip_package.py": "50c22e7740d3f6b7f551c670cdc8fd02febff093fd6731a91bc27f1e7d4e94c8"
+  "runtime/credential_store.py": "ea3ff7a7ce2c85cf6149a174f07e300d3ddcfb383f35e3d0acf22713d218dba6",
+  "runtime/authenticated_delivery.py": "b79e1785383aeeb670d4b83feae591568778c43fbdbaa1cf33402cb60d4530f9",
+  "runtime/update_client.py": "7a269aa7ff5c97a3ffc6976396f5f6fe33704f41a1433819955c5fb99e718951",
+  "runtime/zip_package.py": "50c22e7740d3f6b7f551c670cdc8fd02febff093fd6731a91bc27f1e7d4e94c8",
+  ".github/workflows/windows-credentials.yml": "f462085eb3886d8ff6cab26b43f57079ca27acb2ec8b7875b0f37ad3c9b845f7"
 }
