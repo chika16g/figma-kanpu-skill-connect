@@ -43,12 +43,14 @@ def run(runtime,entry_root=None):
     service='com.chiluco.figma-skill|'+origin;account='figma-kanpu-totonoe'
     credential='TEST_ONLY_'+secrets.token_hex(32)
     pending={'schema':1,'origin':origin,'code':secrets.token_hex(32)+'.'+secrets.token_hex(32),'verifier':secrets.token_hex(32)}
-    checks={};state={'version':1};network_calls=[]
+    checks={};state={'version':1};network_calls=[];packages={}
     def package():
+        if state['version'] in packages:return packages[state['version']]
         files={p.name:p.read_bytes() for p in runtime.glob('*.py')}
         body={'scripts/'+name:data for name,data in files.items()}
         # Satisfy the package format without publishing or exercising paid lessons.
         body['scripts/verify_layout_rules.py']=b'"""Disposable fixture; no design validation is performed here."""\n'
+        body['references/練習用_カンプ.md']='有料教材ではない日本語の試験データ\n'.encode('utf-8')
         body['SKILL.md']=('---\nname: figma-kanpu-totonoe\ndescription: Disposable test only\n---\n\nTest content '+str(state['version'])+'\n').encode()
         release={'schema':1,'bootstrap_version':2,'name':client.NAME,'version':'0.0.'+str(state['version'])+'-trial.1',
                  'requirements':['figma-mcp','image-generation'],'authenticated_delivery_protocol':1,'credential_storage_protocol':1,
@@ -58,7 +60,8 @@ def run(runtime,entry_root=None):
             z.writestr('release.json',json.dumps(release))
             for name,data in body.items():z.writestr('skills/'+client.NAME+'/'+name,data)
         data=stream.getvalue()
-        return {'schema':1,'release':release,'package_bytes':len(data),'package_sha256':hashlib.sha256(data).hexdigest()},data
+        packages[state['version']]=({'schema':1,'release':release,'package_bytes':len(data),'package_sha256':hashlib.sha256(data).hexdigest()},data)
+        return packages[state['version']]
     def local_https(request,timeout):
         assert request.get_header('Authorization')=='Bearer '+credential
         prefix=origin+'/wp-json/chika-skill-self/v1/'
@@ -97,20 +100,26 @@ def run(runtime,entry_root=None):
         vault.pending_clear(origin,stores.pending_tag(pending));assert vault.pending_read(origin) is None
         checks['pending_roundtrip_and_scoped_clear']=True
         with tempfile.TemporaryDirectory(prefix='course-windows-smoke-') as temporary:
-            root=Path(temporary)/client.NAME;state_dir=root.parent/('.'+client.NAME+'-updater')
+            root=Path(temporary)/'受講者の練習環境'/client.NAME;state_dir=root.parent/('.'+client.NAME+'-updater')
             with patch.object(api.urllib.request,'build_opener') as opener:
                 opener.return_value.open=local_https
                 installed=api.install(origin,root,True,client,endpoint_profile='wordpress_self_registration_v1',credential_backend='windows_credential_manager')
+                result['last_operation']='install'
+                result['last_operation_status']=installed['status']
                 assert installed['status']=='installed';before=client.hashes(root)
                 checks['install_with_saved_windows_credential']=True
                 assert client.update(root,state_dir)['status']=='current'
                 state['version']=2;updated=client.update(root,state_dir)
+                result['last_operation']='update'
+                result['last_operation_status']=updated['status']
                 assert updated['status']=='updated' and client.hashes(root)!=before
                 assert client.update(root,state_dir)['status']=='current'
                 checks['changed_content_update_and_current']=True
-                config=json.loads((state_dir/'config.json').read_text())
+                config=json.loads((state_dir/'config.json').read_text(encoding='utf-8'))
                 assert config['source']==origin and config['credential_backend']=='windows_credential_manager'
                 restored=client.local_transport().restore(root,state_dir,client)
+                result['last_operation']='restore'
+                result['last_operation_status']=restored['status']
                 assert restored['status']=='restored' and client.hashes(root)==before
                 checks['previous_content_restored']=True
                 assert credential not in json.dumps(config)
