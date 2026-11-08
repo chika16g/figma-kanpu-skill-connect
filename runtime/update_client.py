@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Noninteractive, read-only Git fetch followed by a validated skill-only update.
+"""Noninteractive validated skill-only update from the approved source.
 
-No credentials are read by this script. Git uses the installer's existing access.
-Configuration/state live outside the replaceable skill directory.
+Authenticated delivery reads its dedicated credential from the configured OS
+store. Git compatibility mode uses existing Git access. Configuration/state live
+outside the replaceable skill directory; neither mode accepts secret arguments.
 """
 import argparse
 import ast

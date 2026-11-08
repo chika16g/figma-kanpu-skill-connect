@@ -1,8 +1,9 @@
-"""Origin-scoped credential adapters. Import/defaults never access an OS store.
+"""Origin-scoped OS credential adapters; imports/defaults never access a store.
 
-Native macOS implementation is UNTESTED against a real keychain. No CLI secret arguments,
-keychain enumeration, cloud sync, access-group changes or silent permission grants.
+No secret arguments, credential enumeration, cloud sync, access-group changes or
+silent permission grants. Native integration coverage is recorded with the release.
 """
+import contextlib
 import hashlib
 import json
 import re
@@ -102,7 +103,7 @@ class MacOSKeychainStore:
         if self.pending_read(origin) is not None:raise StoreError('secure_pending_clear_failed')
 
 class _NativeKeychain:
-    """Independent opt-in SecItem wrapper; live behavior unverified. Guarded tests inject a bridge."""
+    """Opt-in SecItem wrapper. Guarded unit tests inject a bridge."""
     def __init__(self):
         if sys.platform!='darwin':raise StoreError('unsupported_secure_store')
         V=ctypes.c_void_p;I=ctypes.c_long
@@ -141,6 +142,7 @@ class _NativeKeychain:
             if out.value:self.cf.CFRelease(out)
             self.cf.CFRelease(q)
             for r in refs:self.cf.CFRelease(r)
+
     def add(self,service,account,value,tag=None):
         q,refs=self.query(service,account,value=value,tag=tag)
         try:
@@ -158,3 +160,118 @@ class _NativeKeychain:
         finally:
             self.cf.CFRelease(q)
             for r in refs:self.cf.CFRelease(r)
+
+
+class WindowsCredentialStore(MacOSKeychainStore):
+    """Same origin/pending contract, backed by the current user's local Windows vault."""
+    backend='windows_credential_manager'
+    def _native(self):
+        if self._bridge is None:self._bridge=_NativeWindowsCredentialManager()
+        return self._bridge
+
+
+class _WindowsFileTime(ctypes.Structure):
+    _fields_=[('low',ctypes.c_uint32),('high',ctypes.c_uint32)]
+
+
+class _WindowsCredential(ctypes.Structure):
+    # Fixed-width DWORDs are essential, including when ABI tests run on macOS.
+    _fields_=[('Flags',ctypes.c_uint32),('Type',ctypes.c_uint32),
+              ('TargetName',ctypes.c_wchar_p),('Comment',ctypes.c_wchar_p),
+              ('LastWritten',_WindowsFileTime),('CredentialBlobSize',ctypes.c_uint32),
+              ('CredentialBlob',ctypes.POINTER(ctypes.c_ubyte)),('Persist',ctypes.c_uint32),
+              ('AttributeCount',ctypes.c_uint32),('Attributes',ctypes.c_void_p),
+              ('TargetAlias',ctypes.c_wchar_p),('UserName',ctypes.c_wchar_p)]
+
+
+class _NativeWindowsCredentialManager:
+    """Opt-in Cred*W calls for exactly two course-owned generic credential items.
+
+Writes never replace an existing item. A named per-target mutex serializes this
+client's compare/add and pending compare/delete across processes. No enumeration
+or deletion of the main credential is exposed. LOCAL_MACHINE persistence means
+the same Windows user's later logons on this computer; it is not roaming storage.
+"""
+    def __init__(self):
+        if sys.platform!='win32':raise StoreError('unsupported_secure_store')
+        self.api=ctypes.WinDLL('Advapi32.dll',use_last_error=True)
+        self.kernel=ctypes.WinDLL('Kernel32.dll',use_last_error=True)
+        self.last_error=ctypes.get_last_error
+        V=ctypes.c_void_p;D=ctypes.c_uint32;W=ctypes.c_wchar_p;B=ctypes.c_int
+        P=ctypes.POINTER(_WindowsCredential)
+        def sig(lib,name,args,result):
+            f=getattr(lib,name);f.argtypes=args;f.restype=result
+        sig(self.api,'CredReadW',[W,D,D,ctypes.POINTER(P)],B)
+        sig(self.api,'CredWriteW',[P,D],B)
+        sig(self.api,'CredDeleteW',[W,D,D],B)
+        sig(self.api,'CredFree',[V],None)
+        sig(self.kernel,'CreateMutexW',[V,B,W],V)
+        sig(self.kernel,'WaitForSingleObject',[V,D],D)
+        sig(self.kernel,'ReleaseMutex',[V],B)
+        sig(self.kernel,'CloseHandle',[V],B)
+
+    @staticmethod
+    def target(service,account):
+        prefix='com.chiluco.figma-skill|'
+        if not isinstance(service,str) or not service.startswith(prefix) or account not in ('figma-kanpu-totonoe','figma-kanpu-totonoe.pending'):
+            raise StoreError('invalid_credential_scope')
+        origin_key(service[len(prefix):])
+        return service+'|'+account
+
+    @contextlib.contextmanager
+    def locked(self,target):
+        name='Local\\chiluco.figma-skill.'+hashlib.sha256(target.encode()).hexdigest()
+        handle=self.kernel.CreateMutexW(None,False,name)
+        if not handle:raise StoreError('secure_store_unavailable')
+        acquired=False
+        try:
+            status=self.kernel.WaitForSingleObject(handle,5000)
+            if status not in (0,128):raise StoreError('secure_store_busy')
+            acquired=True
+            yield
+        finally:
+            if acquired:self.kernel.ReleaseMutex(handle)
+            self.kernel.CloseHandle(handle)
+
+    def _read(self,target):
+        pointer=ctypes.POINTER(_WindowsCredential)()
+        if not self.api.CredReadW(target,1,0,ctypes.byref(pointer)):
+            if self.last_error()==1168:return None
+            raise StoreError('secure_store_unavailable')
+        try:
+            if not pointer:raise StoreError('secure_store_unavailable')
+            item=pointer.contents
+            if item.Type!=1 or item.TargetName!=target or item.UserName!='figma-kanpu-totonoe' or not 32<=item.CredentialBlobSize<=4096 or not item.CredentialBlob:
+                raise StoreError('invalid_credential')
+            return ctypes.string_at(item.CredentialBlob,item.CredentialBlobSize).decode('ascii')
+        finally:
+            self.api.CredFree(pointer)
+
+    def read(self,service,account):
+        return self._read(self.target(service,account))
+
+    def add(self,service,account,value,tag=None):
+        target=self.target(service,account)
+        data=value.encode('ascii')
+        if not 32<=len(data)<=4096:raise StoreError('invalid_credential')
+        if tag is not None and (account!='figma-kanpu-totonoe.pending' or hashlib.sha256(data).hexdigest()!=tag):
+            raise StoreError('invalid_pending_scope')
+        with self.locked(target):
+            # CredWriteW replaces by default, so the check must be inside the mutex.
+            if self._read(target) is not None:raise StoreError('existing_credential_preserved')
+            buf=(ctypes.c_ubyte*len(data)).from_buffer_copy(data)
+            item=_WindowsCredential(Type=1,TargetName=target,CredentialBlobSize=len(data),
+                                    CredentialBlob=buf,Persist=2,UserName='figma-kanpu-totonoe')
+            if not self.api.CredWriteW(ctypes.byref(item),0):raise StoreError('secure_store_write_failed')
+            if self._read(target)!=value:raise StoreError('secure_store_write_failed')
+
+    def delete(self,service,account,tag):
+        target=self.target(service,account)
+        if account!='figma-kanpu-totonoe.pending' or not re.fullmatch(r'[a-f0-9]{64}',tag):
+            raise StoreError('invalid_pending_scope')
+        with self.locked(target):
+            old=self._read(target)
+            if old is None:return
+            if hashlib.sha256(old.encode('ascii')).hexdigest()!=tag:raise StoreError('pending_pairing_changed')
+            if not self.api.CredDeleteW(target,1,0) and self.last_error()!=1168:
+                raise StoreError('secure_pending_clear_failed')

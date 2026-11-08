@@ -1,7 +1,7 @@
-"""Independent authenticated-delivery transport; never handles a real credential by default.
+"""Authenticated delivery from the initially approved HTTPS origin.
 
-The production credential/purchase adapters are intentionally not connected.
-Tests inject fixed TEST_ONLY credentials and an in-process HTTP transport.
+Credentials come only from the explicitly configured OS store or an injected
+provider. Tests use TEST_ONLY credentials and an in-process transport.
 """
 import hashlib
 import json
@@ -66,8 +66,10 @@ def credential_for_origin(origin):
 
 def approved_store_for_config(config):
     if config.get('credential_backend') is None:return None
-    if config.get('credential_backend')!='macos_keychain':raise ValueError('unknown_credential_backend')
-    return load_store_module().MacOSKeychainStore(approved=True)
+    module=load_store_module()
+    if config['credential_backend']=='macos_keychain':return module.MacOSKeychainStore(approved=True)
+    if config['credential_backend']=='windows_credential_manager':return module.WindowsCredentialStore(approved=True)
+    raise ValueError('unknown_credential_backend')
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -177,7 +179,7 @@ def install(source, destination, accept_source, client, provider=None, opener=No
     if raw.is_symlink() or root.exists() or state_dir.exists() or state_dir.is_symlink():
         return {'status': 'not_installed', 'reason': 'existing_installation_preserved'}
     endpoint_prefix(endpoint_profile)
-    if credential_backend not in (None,"macos_keychain"): raise ValueError("unknown_credential_backend")
+    if credential_backend not in (None,"macos_keychain","windows_credential_manager"): raise ValueError("unknown_credential_backend")
     config = {'endpoint_profile': endpoint_profile, 'source_kind': 'authenticated_api', 'source': origin_url(source), 'trusted_at_install': True,
         'approved_bootstrap_version': 2, 'approved_requirements': ['figma-mcp', 'image-generation']}
     if credential_backend is not None: config["credential_backend"] = credential_backend
