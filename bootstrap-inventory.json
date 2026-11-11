@@ -10,5 +10,5 @@
   "runtime/update_client.py": "25a3d12c544aef2bfc0862ec4d7e2827c599277bb3a3dfb5032c8d6bf13bfe9e",
   "runtime/zip_package.py": "19bf43b73f7ad06782f51441bd6bf8ae89cdc11cc60267b5ecf784d5049920c1",
   ".github/tests/browser_input_chromium.cjs": "dbf1dfa9c4d7ba02d71fa3bbc831a7a21ae2f36ccb9b97557041f99cbc312d43",
-  ".github/workflows/windows-credentials.yml": "006a094cd55fdc2e8372c97b38047d5b6716a3ae7b2d4e9cbb56c16f2b9a7329"
+  ".github/workflows/windows-credentials.yml": "f462085eb3886d8ff6cab26b43f57079ca27acb2ec8b7875b0f37ad3c9b845f7"
 }
