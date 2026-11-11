@@ -5,10 +5,18 @@ from pathlib import Path
 def load(name):
     spec=importlib.util.spec_from_file_location(name,Path(__file__).parent/'runtime'/(name+'.py'));m=importlib.util.module_from_spec(spec);sys.modules[name]=m;spec.loader.exec_module(m);return m
 def browser_code():
-    spec=importlib.util.spec_from_file_location('course_browser_input',Path(__file__).with_name('browser_input.py'));m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m);return m.read_code()
+    spec = importlib.util.spec_from_file_location('course_browser_input', Path(__file__).with_name('browser_input.py'))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    try:
+        return module.read_code()
+    except module.InputTimedOut:
+        return None
 class SafeParser(argparse.ArgumentParser):
     def error(self,message):raise ValueError('invalid_arguments')
 def main():
+    if sys.version_info < (3, 9):
+        return {'status':'python_version_unsupported','message':'Python 3.9以降で接続を実行してください。'}
     p=SafeParser();p.add_argument('--origin',required=True);p.add_argument('--destination',type=Path,required=True);p.add_argument('--accept-source',action='store_true');p.add_argument('--endpoint-profile',choices=['standalone_v1','wordpress_rest_v1','wordpress_self_registration_v1'],default='standalone_v1')
     storage=p.add_mutually_exclusive_group();storage.add_argument('--use-macos-keychain',action='store_true');storage.add_argument('--use-windows-credential-manager',action='store_true')
     p.add_argument('--browser-input',action='store_true')
@@ -39,7 +47,10 @@ def main():
         if a.restart_pairing:
             if getpass.getpass('未完了の接続記録だけを消す場合は RESTART と入力: ')!='RESTART':return {'status':'restart_not_confirmed'}
             if not pair.clear_pending_record(a.origin,store):return {'status':'pending_record_preserved'}
-        code=browser_code() if a.browser_input else getpass.getpass('初回接続コード: ');r=pair.exchange(a.origin,code,store,api)
+        code = browser_code() if a.browser_input else getpass.getpass('初回接続コード: ')
+        if code is None:
+            return {'status':'secure_input_timed_out','message':'入力画面の待ち時間が終了しました。初回接続をもう一度起動し、新しいURLを開いてください。'}
+        r=pair.exchange(a.origin,code,store,api)
         if r['status']!='paired':return r
     elif a.resume:
         r=pair.exchange(a.origin,None,store,api)
@@ -48,4 +59,4 @@ def main():
 if __name__=='__main__':
     try:r=main()
     except Exception:r={'status':'setup_not_completed'}
-    print(json.dumps(r,ensure_ascii=False));raise SystemExit(0 if r['status']=='installed' else 1)
+    print(json.dumps(r));raise SystemExit(0 if r['status']=='installed' else 1)

@@ -8,6 +8,10 @@ import time
 from urllib.parse import parse_qs
 
 
+class InputTimedOut(ValueError):
+    pass
+
+
 def read_code(timeout=600,announce=None):
     csrf=secrets.token_hex(32);received=[]
     class Handler(BaseHTTPRequestHandler):
@@ -18,7 +22,8 @@ def read_code(timeout=600,announce=None):
             self.send_response(status)
             for key,value in {
                 'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store',
-                'Referrer-Policy':'no-referrer','X-Frame-Options':'DENY',
+                # A native POST under no-referrer can send Origin: null.
+                'Referrer-Policy':'same-origin','X-Frame-Options':'DENY',
                 'Content-Security-Policy':"default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
                 'X-Content-Type-Options':'nosniff','Connection':'close'
             }.items():self.send_header(key,value)
@@ -46,9 +51,9 @@ def read_code(timeout=600,announce=None):
     with HTTPServer(('127.0.0.1',0),Handler) as server:
         server.timeout=1;address='127.0.0.1:'+str(server.server_port);origin='http://'+address
         if announce is None:
-            print(json.dumps({'status':'input_required','url':origin+'/','message':'このPCの非表示入力欄へ、講座の初回接続コードを入力してください。'},ensure_ascii=False),flush=True)
+            print(json.dumps({'status':'input_required','url':origin+'/','message':'このPCの非表示入力欄へ、講座の初回接続コードを入力してください。'}),flush=True)
         else:announce(origin+'/')
         end=time.monotonic()+timeout
         while not received and time.monotonic()<end:server.handle_request()
-    if not received:raise ValueError('secure_input_timed_out')
+    if not received:raise InputTimedOut('secure_input_timed_out')
     return received[0]
