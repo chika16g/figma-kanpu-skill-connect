@@ -14,9 +14,7 @@ import sys
 import tempfile
 import queue
 import threading
-import re
-import urllib.parse
-import urllib.request
+import subprocess
 from unittest.mock import patch
 import zipfile
 
@@ -73,18 +71,16 @@ def run(runtime,entry_root=None):
         browser=load('windows_native_smoke_browser',(entry_root or runtime.parent)/'browser_input.py')
         ready=queue.Queue();entered=[];entry_errors=[]
         def read_browser():
-            try:entered.append(browser.read_code(timeout=10,announce=ready.put))
+            try:entered.append(browser.read_code(timeout=45,announce=ready.put))
             except Exception:entry_errors.append(True);ready.put(None)
         worker=threading.Thread(target=read_browser,daemon=True);worker.start();url=ready.get(timeout=5)
         assert isinstance(url,str) and url.startswith('http://127.0.0.1:')
-        opener=urllib.request.build_opener(urllib.request.ProxyHandler({}))
-        with opener.open(url,timeout=3) as response:
-            form=response.read().decode();assert 'type="password"' in form
-        csrf=re.search('name="csrf" value="([a-f0-9]{64})"',form).group(1)
         dummy_code='a'*64+'.'+'b'*64
-        request=urllib.request.Request(url+'pair',data=urllib.parse.urlencode({'csrf':csrf,'code':dummy_code}).encode(),headers={'Origin':url.rstrip('/'),'Content-Type':'application/x-www-form-urlencoded'})
-        with opener.open(request,timeout=3) as response:assert dummy_code.encode() not in response.read()
+        chrome_test=Path(__file__).with_name('windows_browser_smoke.cjs')
+        completed=subprocess.run(['node',str(chrome_test),url],capture_output=True,text=True,timeout=45,check=True)
+        assert json.loads(completed.stdout)=={'status':'PASS','real_chrome_form_submit':True}
         worker.join(timeout=3);assert not worker.is_alive() and entered==[dummy_code] and not entry_errors
+        checks['real_chrome_form_submit']=True
         checks['local_browser_password_input']=True
         assert vault.read(origin) is None and vault.pending_read(origin) is None
         vault.put(origin,credential);assert vault.read(origin)==credential
